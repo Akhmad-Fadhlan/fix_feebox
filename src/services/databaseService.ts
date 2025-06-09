@@ -15,7 +15,7 @@ export const realtimeDb = getDatabase(app);
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://projectiot.web.id/api/v1';
 const API_TIMEOUT = 30000; // 30 seconds timeout
 
-// Define data types
+// Define data types (keeping existing interfaces)
 export interface User {
   id?: string;
   uid: string;
@@ -138,6 +138,18 @@ export interface ESP32Device {
   port: number;
 }
 
+export interface ESP32DeviceInput {
+  name: string;
+  device_identifier: string;
+  locker_id: string;
+  status?: 'online' | 'offline';
+  key?: number;
+  isDeleted?: boolean;
+  location: string;
+  ip_address: string;
+  port: number;
+}
+
 export interface Package {
   id?: string;
   name: string;
@@ -169,6 +181,16 @@ export interface Payment {
   updatedAt: string;
 }
 
+export interface PaymentInput {
+  bookingId: string;
+  amount: number;
+  paymentMethod: string;
+  status?: 'pending' | 'paid' | 'failed' | 'success';
+  duitku_payment_id?: string;
+  order_id?: string;
+  key?: number;
+}
+
 export interface LockerLog {
   id: string;
   locker_id: string;
@@ -179,7 +201,15 @@ export interface LockerLog {
   userId?: string;
 }
 
-// Helper function to handle API responses
+export interface LockerLogInput {
+  locker_id: string;
+  esp32_device_id: string;
+  action: string;
+  action_time?: string;
+  key?: number;
+  userId?: string;
+}
+
 // Enhanced fetch function with timeout and better error handling
 const fetchWithTimeout = async (url: string, options: RequestInit = {}) => {
   const controller = new AbortController();
@@ -275,7 +305,6 @@ const handleResponse = async (response: Response) => {
 };
 
 // Enhanced sync function that syncs specific data types to Firebase after API operations
-// Enhanced sync function with better error handling
 const syncSpecificDataToFirebase = async (dataType: string) => {
   try {
     console.log(`Syncing ${dataType} to Firebase after backend operation...`);
@@ -287,6 +316,7 @@ const syncSpecificDataToFirebase = async (dataType: string) => {
       case 'users':
         await firebaseSyncService.syncUsersToFirebase();
         break;
+      case 'transactions':
       case 'bookings':
         await firebaseSyncService.syncTransactionsToFirebase();
         break;
@@ -298,6 +328,10 @@ const syncSpecificDataToFirebase = async (dataType: string) => {
         break;
       case 'categories':
         await firebaseSyncService.syncBoxCategoriesToFirebase();
+        break;
+      case 'locker-logs':
+        // Note: Add syncLockerLogsToFirebase if it exists in firebaseSyncService
+        console.log('Locker logs sync not implemented yet');
         break;
       default:
         console.warn(`Unknown data type for sync: ${dataType}`);
@@ -311,11 +345,108 @@ const syncSpecificDataToFirebase = async (dataType: string) => {
 };
 
 // Generate unique ID with better uniqueness
-const generateUniqueId = (prefix: string = 'user') => {
+const generateUniqueId = (prefix: string = 'item') => {
   const timestamp = Date.now();
   const random = Math.random().toString(36).substr(2, 9);
   return `${prefix}_${timestamp}_${random}`;
 };
+
+// Locker Availability Management System
+export class LockerAvailabilityManager {
+  /**
+   * Update locker status and availability when a booking is created
+   */
+  static async bookLocker(lockerId: string, userId?: string): Promise<void> {
+    try {
+      console.log(`Booking locker ${lockerId}...`);
+      
+      // Get current locker data
+      const locker = await enhancedDatabaseService.getLocker(lockerId);
+      
+      // Validate availability
+      if (locker.available <= 0) {
+        throw new Error('Locker tidak tersedia');
+      }
+      
+      if (locker.status === 'maintenance') {
+        throw new Error('Locker sedang dalam maintenance');
+      }
+
+      // Calculate new availability
+      const newAvailable = locker.available - 1;
+      const newStatus = newAvailable === 0 ? 'occupied' : locker.status;
+
+      // Update locker status and availability
+      await enhancedDatabaseService.updateLocker(lockerId, {
+        available: newAvailable,
+        status: newStatus,
+        updatedAt: new Date().toISOString()
+      });
+
+      // Create locker log
+      await enhancedDatabaseService.createLockerLog({
+        locker_id: lockerId,
+        esp32_device_id: locker.esp32_device_id || '',
+        action: 'booked',
+        userId: userId
+      });
+
+      console.log(`Locker ${lockerId} successfully booked. Available: ${newAvailable}, Status: ${newStatus}`);
+    } catch (error) {
+      console.error('Error booking locker:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update locker status and availability when a booking is cancelled or item is retrieved
+   */
+  static async releaseLocker(lockerId: string, userId?: string, action: 'cancelled' | 'retrieved' = 'retrieved'): Promise<void> {
+    try {
+      console.log(`Releasing locker ${lockerId} (${action})...`);
+      
+      // Get current locker data
+      const locker = await enhancedDatabaseService.getLocker(lockerId);
+      
+      // Calculate new availability
+      const newAvailable = Math.min(locker.available + 1, locker.total);
+      const newStatus = newAvailable > 0 ? 'available' : locker.status;
+
+      // Update locker status and availability
+      await enhancedDatabaseService.updateLocker(lockerId, {
+        available: newAvailable,
+        status: newStatus,
+        updatedAt: new Date().toISOString()
+      });
+
+      // Create locker log
+      await enhancedDatabaseService.createLockerLog({
+        locker_id: lockerId,
+        esp32_device_id: locker.esp32_device_id || '',
+        action: action,
+        userId: userId
+      });
+
+      console.log(`Locker ${lockerId} successfully released. Available: ${newAvailable}, Status: ${newStatus}`);
+    } catch (error) {
+      console.error('Error releasing locker:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Validate if a locker is available for booking
+   */
+  static async validateAvailability(lockerId: string): Promise<boolean> {
+    try {
+      const locker = await enhancedDatabaseService.getLocker(lockerId);
+      return locker.available > 0 && locker.status !== 'maintenance';
+    } catch (error) {
+      console.error('Error validating locker availability:', error);
+      return false;
+    }
+  }
+}
 
 // Enhanced user data transformation
 const transformUserData = (userData: any): User => {
@@ -335,9 +466,9 @@ const transformUserData = (userData: any): User => {
   };
 };
 
-// Define API service object
-export const databaseService = {
-  // User-related methods
+// Define enhanced API service object
+export const enhancedDatabaseService = {
+  // User-related methods (keeping existing implementation)
   async getUsers(): Promise<User[]> {
     try {
       console.log('Fetching users from backend API...');
@@ -446,65 +577,6 @@ export const databaseService = {
       }
       
       throw new Error(`Gagal membuat user: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  },
-
-  async createGuest(data: { phone: string }): Promise<string> {
-    try {
-      console.log('Creating guest with phone:', data.phone);
-      
-      // Generate a simple guest ID
-      const guestId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-      
-      const guestData = {
-        name: `Guest ${data.phone.slice(-4)}`,
-        email: `${guestId}@guest.com`,
-        phone: data.phone,
-        role: 'user' as const
-      };
-
-      // Try to create in backend API first
-      try {
-        const response = await fetch(`${API_BASE_URL}/users`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(guestData),
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          console.log('Guest created in backend:', result);
-          
-          // Sync to Firebase after backend success
-          await syncSpecificDataToFirebase('users');
-          
-          return result.uid || guestId;
-        }
-      } catch (apiError) {
-        console.warn('Failed to create guest in backend API:', apiError);
-      }
-
-      // Store in Firebase Realtime Database as fallback
-      try {
-        const userRef = ref(realtimeDb, `users/${guestId}`);
-        await set(userRef, {
-          uid: guestId,
-          ...guestData,
-          isDeleted: false,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        });
-        console.log('Guest created in Firebase as fallback:', guestId);
-      } catch (firebaseError) {
-        console.warn('Failed to save guest to Firebase:', firebaseError);
-      }
-
-      return guestId;
-    } catch (error) {
-      console.error('Error creating guest:', error);
-      throw error;
     }
   },
 
@@ -635,8 +707,32 @@ export const databaseService = {
 
   async getLocker(lockerId: string): Promise<Locker> {
     try {
-      const response = await fetch(`${API_BASE_URL}/lockers/${lockerId}`);
-      return handleResponse(response);
+      console.log(`Fetching locker ${lockerId} from backend...`);
+      const response = await fetchWithTimeout(`${API_BASE_URL}/lockers/${lockerId}`);
+      const data = await handleResponse(response);
+      
+      // Transform single locker data
+      return {
+        id: data._id,
+        lockerId: data.locker_code || '',
+        locker_code: data.locker_code || '',
+        name: data.name || `Locker ${data.locker_code}`,
+        size: `${data.width}x${data.height}`,
+        width: parseInt(data.width) || 0,
+        height: parseInt(data.height) || 0,
+        total: data.total || 1,
+        box_category_id: data.box_category_id?.toString() || '',
+        status: data.status || 'available',
+        description: data.description || '',
+        basePrice: data.basePrice || 10000,
+        available: data.available || data.total || 1,
+        key: data.key || Date.now(),
+        isDeleted: data.isDeleted || false,
+        location: data.location || '',
+        esp32_device_id: data.esp32_device_id || '',
+        createdAt: data.created_at || data.createdAt || new Date().toISOString(),
+        updatedAt: data.updated_at || data.updatedAt || new Date().toISOString()
+      };
     } catch (error) {
       console.error('Error fetching locker:', error);
       throw error;
@@ -647,25 +743,18 @@ export const databaseService = {
     try {
       console.log('Creating locker in backend first:', lockerData);
       
-      const response = await fetch(`${API_BASE_URL}/lockers`, {
+      const response = await fetchWithTimeout(`${API_BASE_URL}/lockers`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify(lockerData),
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
+      const result = await handleResponse(response);
       
       // Sync to Firebase AFTER successful backend operation
       await syncSpecificDataToFirebase('lockers');
       
       console.log('Locker created in backend and synced to Firebase');
-      return result.id || result;
+      return result.id || result._id || result;
     } catch (error) {
       console.error('Error creating locker:', error);
       throw error;
@@ -676,19 +765,12 @@ export const databaseService = {
     try {
       console.log('Updating locker in backend first:', lockerId, updates);
       
-      const response = await fetch(`${API_BASE_URL}/lockers/${lockerId}`, {
+      const response = await fetchWithTimeout(`${API_BASE_URL}/lockers/${lockerId}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify(updates),
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
+      const result = await handleResponse(response);
       
       // Sync to Firebase AFTER successful backend operation
       await syncSpecificDataToFirebase('lockers');
@@ -705,13 +787,11 @@ export const databaseService = {
     try {
       console.log('Deleting locker from backend first:', lockerId);
       
-      const response = await fetch(`${API_BASE_URL}/lockers/${lockerId}`, {
+      const response = await fetchWithTimeout(`${API_BASE_URL}/lockers/${lockerId}`, {
         method: 'DELETE',
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      await handleResponse(response);
       
       // Sync to Firebase AFTER successful backend deletion
       await syncSpecificDataToFirebase('lockers');
@@ -723,122 +803,164 @@ export const databaseService = {
     }
   },
 
-  // Box Category-related methods
-  async getBoxCategories(): Promise<BoxCategory[]> {
+  // ESP32 Device methods with full CRUD support
+  async getDevices(): Promise<ESP32Device[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/box-categories`);
+      console.log('Fetching ESP32 devices from backend...');
+      const response = await fetchWithTimeout(`${API_BASE_URL}/esp32-devices`);
       const data = await handleResponse(response);
       
-      // Transform the data to match our BoxCategory interface
-      return data.map((category: any) => ({
-        id: category._id,
-        name: category.name,
-        type: category.type,
-        width: parseInt(category.width) || 0,
-        height: parseInt(category.height) || 0,
-        createdAt: category.created_at || category.createdAt || new Date().toISOString(),
-        updatedAt: category.updated_at || category.updatedAt || new Date().toISOString()
+      // Transform the data to match our ESP32Device interface
+      return data.map((device: any) => ({
+        id: device._id,
+        name: device.name,
+        device_identifier: device.device_identifier,
+        locker_id: device.locker_id,
+        status: device.status || 'offline',
+        key: device.key,
+        isDeleted: device.isDeleted || false,
+        last_online: device.last_online || new Date().toISOString(),
+        location: device.location,
+        ip_address: device.ip_address,
+        port: device.port
       }));
     } catch (error) {
-      console.error('Error fetching box categories:', error);
-      throw error;
+      console.error('Error fetching ESP32 devices:', error);
+      throw new Error(`Gagal mengambil data ESP32 devices: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   },
 
-  async getBoxCategory(categoryId: string): Promise<BoxCategory> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/box-categories/${categoryId}`);
-      return handleResponse(response);
-    } catch (error) {
-      console.error('Error fetching box category:', error);
-      throw error;
-    }
+  async getAllDevices(): Promise<ESP32Device[]> {
+    return this.getDevices();
   },
 
-  async createBoxCategory(categoryData: BoxCategory): Promise<BoxCategory> {
+  async getDevice(deviceId: string): Promise<ESP32Device> {
     try {
-      console.log('Creating box category in backend first:', categoryData);
+      console.log(`Fetching ESP32 device ${deviceId} from backend...`);
+      const response = await fetchWithTimeout(`${API_BASE_URL}/esp32-devices/${deviceId}`);
+      const data = await handleResponse(response);
       
-      const response = await fetch(`${API_BASE_URL}/box-categories`, {
+      return {
+        id: data._id,
+        name: data.name,
+        device_identifier: data.device_identifier,
+        locker_id: data.locker_id,
+        status: data.status || 'offline',
+        key: data.key,
+        isDeleted: data.isDeleted || false,
+        last_online: data.last_online || new Date().toISOString(),
+        location: data.location,
+        ip_address: data.ip_address,
+        port: data.port
+      };
+    } catch (error) {
+      console.error('Error fetching ESP32 device:', error);
+      throw new Error(`Gagal mengambil data ESP32 device: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  },
+
+  async createDevice(deviceData: ESP32DeviceInput): Promise<string> {
+    try {
+      // Validate required fields
+      if (!deviceData.name?.trim()) {
+        throw new Error('Nama device wajib diisi');
+      }
+      if (!deviceData.device_identifier?.trim()) {
+        throw new Error('Device identifier wajib diisi');
+      }
+      if (!deviceData.locker_id?.trim()) {
+        throw new Error('Locker ID wajib diisi');
+      }
+
+      console.log('Creating ESP32 device in backend first:', deviceData);
+      
+      const deviceDataForBackend = {
+        ...deviceData,
+        status: deviceData.status || 'offline',
+        key: deviceData.key || Date.now(),
+        isDeleted: false,
+        last_online: new Date().toISOString()
+      };
+      
+      const response = await fetchWithTimeout(`${API_BASE_URL}/esp32-devices`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(categoryData),
+        body: JSON.stringify(deviceDataForBackend),
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
+      const result = await handleResponse(response);
       
       // Sync to Firebase AFTER successful backend operation
-      await syncSpecificDataToFirebase('categories');
-
-      console.log('Box category created in backend and synced to Firebase');
-      return result;
+      await syncSpecificDataToFirebase('devices');
+      
+      console.log('ESP32 device created in backend and synced to Firebase');
+      return result.id || result._id || result;
     } catch (error) {
-      console.error('Error creating box category:', error);
-      throw error;
+      console.error('Error creating ESP32 device:', error);
+      throw new Error(`Gagal membuat ESP32 device: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   },
 
-  async updateBoxCategory(categoryId: string, updates: Partial<BoxCategory>): Promise<BoxCategory> {
+  async updateDevice(deviceId: string, updates: Partial<ESP32Device>): Promise<ESP32Device> {
     try {
-      console.log('Updating box category in backend first:', categoryId, updates);
+      if (!deviceId || deviceId === 'undefined' || deviceId === 'null') {
+        throw new Error('Device ID tidak valid untuk update');
+      }
+
+      console.log('Updating ESP32 device in backend first:', deviceId, updates);
       
-      const response = await fetch(`${API_BASE_URL}/box-categories/${categoryId}`, {
+      const updateData = {
+        ...updates,
+        last_online: new Date().toISOString()
+      };
+      
+      const response = await fetchWithTimeout(`${API_BASE_URL}/esp32-devices/${deviceId}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updates),
+        body: JSON.stringify(updateData),
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
+      const result = await handleResponse(response);
       
       // Sync to Firebase AFTER successful backend operation
-      await syncSpecificDataToFirebase('categories');
+      await syncSpecificDataToFirebase('devices');
       
-      console.log('Box category updated in backend and synced to Firebase');
+      console.log('ESP32 device updated in backend and synced to Firebase');
       return result;
     } catch (error) {
-      console.error('Error updating box category:', error);
-      throw error;
+      console.error('Error updating ESP32 device:', error);
+      throw new Error(`Gagal mengupdate ESP32 device: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   },
 
-  async deleteBoxCategory(categoryId: string): Promise<void> {
+  // NEW: ESP32 Device delete method
+  async deleteDevice(deviceId: string): Promise<void> {
     try {
-      console.log('Deleting box category from backend first:', categoryId);
+      if (!deviceId || deviceId === 'undefined' || deviceId === 'null') {
+        throw new Error('Device ID tidak valid untuk penghapusan');
+      }
+
+      console.log('Deleting ESP32 device from backend first:', deviceId);
       
-      const response = await fetch(`${API_BASE_URL}/box-categories/${categoryId}`, {
+      const response = await fetchWithTimeout(`${API_BASE_URL}/esp32-devices/${deviceId}`, {
         method: 'DELETE',
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      await handleResponse(response);
       
       // Sync to Firebase AFTER successful backend deletion
-      await syncSpecificDataToFirebase('categories');
+      await syncSpecificDataToFirebase('devices');
       
-      console.log('Box category deleted from backend and removed from Firebase');
+      console.log('ESP32 device deleted from backend and removed from Firebase');
     } catch (error) {
-      console.error('Error deleting box category:', error);
-      throw error;
+      console.error('Error deleting ESP32 device:', error);
+      throw new Error(`Gagal menghapus ESP32 device: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   },
 
-  // Booking-related methods (updated to use transactions endpoint)
-  async getBookings(): Promise<Booking[]> {
+  // Transaction methods with integrated locker availability management
+  async getTransactions(): Promise<Booking[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/transactions`);
+      console.log('Fetching transactions from backend...');
+      const response = await fetchWithTimeout(`${API_BASE_URL}/transactions`);
       const data = await handleResponse(response);
       
       // Transform transactions to bookings format
@@ -866,39 +988,41 @@ export const databaseService = {
         qrCodeDataURL: transaction.qrCodeDataURL || transaction.qr_code_data_url
       }));
     } catch (error) {
-      console.error('Error fetching bookings:', error);
-      // Return empty array as fallback for missing endpoint
-      if (error instanceof Error && error.message.includes('API endpoint not found')) {
-        console.warn('Transactions endpoint not available, returning empty array');
-        return [];
-      }
-      throw error;
+      console.error('Error fetching transactions:', error);
+      throw new Error(`Gagal mengambil data transaksi: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   },
 
   async getAllBookings(): Promise<Booking[]> {
-    return this.getBookings();
+    return this.getTransactions();
   },
 
-  async getUserBookings(userId: string): Promise<Booking[]> {
-    try {
-      const allBookings = await this.getBookings();
-      return allBookings.filter(booking => booking.userId === userId);
-    } catch (error) {
-      console.error('Error fetching user bookings:', error);
-      return [];
-    }
+  async getBookings(): Promise<Booking[]> {
+    return this.getTransactions();
   },
 
-  async createBooking(bookingData: BookingInput): Promise<Booking> {
+  // NEW: Create transaction with locker availability management
+  async createTransaction(bookingData: BookingInput): Promise<string> {
     try {
-      console.log('Creating booking in backend first:', bookingData);
+      // Validate required fields
+      if (!bookingData.lockerId?.trim()) {
+        throw new Error('Locker ID wajib diisi');
+      }
+      if (!bookingData.userId?.trim()) {
+        throw new Error('User ID wajib diisi');
+      }
+
+      console.log('Creating transaction with locker availability management:', bookingData);
       
-      const response = await fetch(`${API_BASE_URL}/transactions`, {
+      // First, validate locker availability
+      const isAvailable = await LockerAvailabilityManager.validateAvailability(bookingData.lockerId);
+      if (!isAvailable) {
+        throw new Error('Locker tidak tersedia untuk booking');
+      }
+
+      // Create transaction in backend
+      const response = await fetchWithTimeout(`${API_BASE_URL}/transactions`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           userId: bookingData.userId,
           userEmail: bookingData.userEmail,
@@ -910,464 +1034,155 @@ export const databaseService = {
           duration: bookingData.duration,
           totalPrice: bookingData.totalPrice,
           paymentMethod: bookingData.paymentMethod,
-          checkedOut: bookingData.checkedOut || false
+          paymentStatus: 'pending',
+          merchantOrderId: generateUniqueId('order'),
+          checkedIn: false,
+          checkedOut: bookingData.checkedOut || false,
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + (bookingData.duration * 60 * 60 * 1000)).toISOString()
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      const result = await handleResponse(response);
+      const transactionId = result.id || result._id || result;
 
-      const result = await response.json();
+      // Book the locker (update availability and status)
+      await LockerAvailabilityManager.bookLocker(bookingData.lockerId, bookingData.userId);
       
       // Sync to Firebase AFTER successful backend operation
-      await syncSpecificDataToFirebase('bookings');
+      await syncSpecificDataToFirebase('transactions');
       
-      // Also sync lockers to update availability
-      await syncSpecificDataToFirebase('lockers');
-      
-      console.log('Booking created in backend and synced to Firebase');
-      
-      // Also save to Firebase Realtime Database as backup
-      try {
-        const bookingRef = ref(realtimeDb, `bookings/${result.id}`);
-        const bookingForFirebase = {
-          id: result.id,
-          userId: result.userId,
-          userEmail: result.userEmail,
-          customerName: result.customerName,
-          customerPhone: result.customerPhone,
-          lockerId: result.lockerId,
-          lockerName: result.lockerName,
-          lockerSize: result.lockerSize,
-          duration: result.duration,
-          totalPrice: result.totalPrice,
-          paymentMethod: result.paymentMethod,
-          paymentStatus: result.paymentStatus,
-          merchantOrderId: result.merchantOrderId,
-          duitkuReference: result.duitkuReference,
-          createdAt: result.createdAt || new Date().toISOString(),
-          expiresAt: result.expiresAt,
-          checkedIn: result.checkedIn || false,
-          checkedOut: result.checkedOut || false,
-          checkedOutAt: result.checkedOutAt,
-          accessCode: result.accessCode,
-          qrCodeDataURL: result.qrCodeDataURL
-        };
-        await set(bookingRef, bookingForFirebase);
-      } catch (firebaseError) {
-        console.warn('Failed to sync to Firebase:', firebaseError);
-      }
-
-      return result;
+      console.log('Transaction created and locker booked successfully:', transactionId);
+      return transactionId;
     } catch (error) {
-      console.error('Error creating booking:', error);
-      throw error;
+      console.error('Error creating transaction:', error);
+      throw new Error(`Gagal membuat transaksi: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   },
 
-  async updateBooking(bookingId: string, updates: Partial<BookingInput>): Promise<Booking> {
+  async createBooking(bookingData: BookingInput): Promise<string> {
+    return this.createTransaction(bookingData);
+  },
+
+  // Enhanced update transaction with locker status management
+  async updateTransaction(transactionId: string, updates: Partial<Booking>): Promise<Booking> {
     try {
-      console.log('Updating booking in backend first:', bookingId, updates);
+      if (!transactionId || transactionId === 'undefined' || transactionId === 'null') {
+        throw new Error('Transaction ID tidak valid untuk update');
+      }
+
+      console.log('Updating transaction in backend first:', transactionId, updates);
       
-      const response = await fetch(`${API_BASE_URL}/transactions/${bookingId}`, {
+      // Get current transaction to check for status changes
+      const currentTransaction = await this.getTransaction(transactionId);
+      
+      const response = await fetchWithTimeout(`${API_BASE_URL}/transactions/${transactionId}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify(updates),
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      const result = await handleResponse(response);
+      
+      // Handle locker status changes
+      if (updates.checkedOut === true && !currentTransaction.checkedOut) {
+        // Item is being retrieved - release the locker
+        await LockerAvailabilityManager.releaseLocker(currentTransaction.lockerId, currentTransaction.userId, 'retrieved');
+      } else if (updates.paymentStatus === 'failed' || updates.paymentStatus === 'expired') {
+        // Payment failed or expired - release the locker
+        await LockerAvailabilityManager.releaseLocker(currentTransaction.lockerId, currentTransaction.userId, 'cancelled');
       }
-
-      const result = await response.json();
       
       // Sync to Firebase AFTER successful backend operation
-      await syncSpecificDataToFirebase('bookings');
+      await syncSpecificDataToFirebase('transactions');
       
-      // Also sync lockers to update availability if needed
-      await syncSpecificDataToFirebase('lockers');
-
-      console.log('Booking updated in backend and synced to Firebase');
-
-      // Also update in Firebase Realtime Database
-      try {
-        const bookingRef = ref(realtimeDb, `bookings/${bookingId}`);
-        await update(bookingRef, updates);
-      } catch (firebaseError) {
-        console.warn('Failed to sync to Firebase:', firebaseError);
-      }
-
+      console.log('Transaction updated in backend and locker status managed');
       return result;
     } catch (error) {
-      console.error('Error updating booking:', error);
-      throw error;
+      console.error('Error updating transaction:', error);
+      throw new Error(`Gagal mengupdate transaksi: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   },
 
-  async updateBookingStatusByOrderId(merchantOrderId: string, paymentStatus: Booking['paymentStatus']): Promise<void> {
+  async updateBooking(bookingId: string, updates: Partial<Booking>): Promise<Booking> {
+    return this.updateTransaction(bookingId, updates);
+  },
+
+  async getTransaction(transactionId: string): Promise<Booking> {
     try {
-      console.log(`Updating booking status for order ID ${merchantOrderId} to ${paymentStatus}`);
+      console.log(`Fetching transaction ${transactionId} from backend...`);
+      const response = await fetchWithTimeout(`${API_BASE_URL}/transactions/${transactionId}`);
+      const data = await handleResponse(response);
       
-      // Fetch all bookings first
-      const bookings = await this.getBookings();
+      return {
+        id: data._id,
+        userId: data.userId || data.user_id,
+        userEmail: data.userEmail || data.user_email,
+        customerName: data.customerName || data.customer_name,
+        customerPhone: data.customerPhone || data.customer_phone,
+        lockerId: data.lockerId || data.locker_id,
+        lockerName: data.lockerName || data.locker_name,
+        lockerSize: data.lockerSize || data.locker_size,
+        duration: data.duration,
+        totalPrice: data.totalPrice || data.total_price,
+        paymentMethod: data.paymentMethod || data.payment_method,
+        paymentStatus: data.paymentStatus || data.payment_status || 'pending',
+        merchantOrderId: data.merchantOrderId || data.merchant_order_id,
+        duitkuReference: data.duitkuReference || data.duitku_reference,
+        createdAt: data.created_at || data.createdAt || new Date().toISOString(),
+        expiresAt: data.expiresAt || data.expires_at,
+        checkedIn: data.checkedIn || data.checked_in || false,
+        checkedOut: data.checkedOut || data.checked_out || false,
+        checkedOutAt: data.checkedOutAt || data.checked_out_at,
+        accessCode: data.accessCode || data.access_code,
+        qrCodeDataURL: data.qrCodeDataURL || data.qr_code_data_url
+      };
+    } catch (error) {
+      console.error('Error fetching transaction:', error);
+      throw new Error(`Gagal mengambil data transaksi: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  },
+
+  async deleteTransaction(transactionId: string): Promise<void> {
+    try {
+      if (!transactionId || transactionId === 'undefined' || transactionId === 'null') {
+        throw new Error('Transaction ID tidak valid untuk penghapusan');
+      }
+
+      console.log('Deleting transaction from backend first:', transactionId);
       
-      // Find the booking with the matching merchantOrderId
-      const bookingToUpdate = bookings.find(booking => booking.merchantOrderId === merchantOrderId);
+      // Get transaction data before deletion to release locker
+      const transaction = await this.getTransaction(transactionId);
       
-      if (!bookingToUpdate) {
-        throw new Error(`Booking with merchantOrderId ${merchantOrderId} not found`);
+      const response = await fetchWithTimeout(`${API_BASE_URL}/transactions/${transactionId}`, {
+        method: 'DELETE',
+      });
+
+      await handleResponse(response);
+      
+      // Release the locker if transaction was active
+      if (!transaction.checkedOut) {
+        await LockerAvailabilityManager.releaseLocker(transaction.lockerId, transaction.userId, 'cancelled');
       }
       
-      // Construct the update object
-      const updates = {
-        paymentStatus: paymentStatus
-      };
+      // Sync to Firebase AFTER successful backend deletion
+      await syncSpecificDataToFirebase('transactions');
       
-      // Call the regular updateBooking method with the booking's ID and the updates
-      await this.updateBooking(bookingToUpdate.id!, updates);
-      
-      console.log(`Successfully updated booking status for order ID ${merchantOrderId}`);
+      console.log('Transaction deleted from backend and locker released');
     } catch (error) {
-      console.error(`Error updating booking status for order ID ${merchantOrderId}:`, error);
-      throw error;
+      console.error('Error deleting transaction:', error);
+      throw new Error(`Gagal menghapus transaksi: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   },
 
   async deleteBooking(bookingId: string): Promise<void> {
-    try {
-      console.log('Deleting booking from backend first:', bookingId);
-      
-      const response = await fetch(`${API_BASE_URL}/transactions/${bookingId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      // Sync to Firebase AFTER successful backend deletion
-      await syncSpecificDataToFirebase('bookings');
-      
-      // Also sync lockers to update availability
-      await syncSpecificDataToFirebase('lockers');
-      
-      console.log('Booking deleted from backend and removed from Firebase');
-      
-      // Also delete from Firebase Realtime Database
-      try {
-        const bookingRef = ref(realtimeDb, `bookings/${bookingId}`);
-        await remove(bookingRef);
-      } catch (firebaseError) {
-        console.warn('Failed to sync to Firebase:', firebaseError);
-      }
-    } catch (error) {
-      console.error('Error deleting booking:', error);
-      throw error;
-    }
+    return this.deleteTransaction(bookingId);
   },
 
-  async deleteAllBookings(): Promise<void> {
-    try {
-      console.warn('Deleting ALL bookings from backend first - BE CAREFUL!');
-      
-      const response = await fetch(`${API_BASE_URL}/transactions`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      // Sync to Firebase AFTER successful backend deletion
-      await syncSpecificDataToFirebase('bookings');
-      
-      // Also sync lockers to update availability
-      await syncSpecificDataToFirebase('lockers');
-      
-      console.log('All bookings deleted from backend and removed from Firebase');
-      
-      // Also delete all bookings from Firebase Realtime Database
-      try {
-        const bookingsRef = ref(realtimeDb, 'bookings');
-        await remove(bookingsRef);
-      } catch (firebaseError) {
-        console.warn('Failed to sync to Firebase:', firebaseError);
-      }
-    } catch (error) {
-      console.error('Error deleting all bookings:', error);
-      throw error;
-    }
-  },
-
-  // Device-related methods (updated to use esp32-devices endpoint)
-  async getDevices(): Promise<ESP32Device[]> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/esp32-devices`);
-      const data = await handleResponse(response);
-      
-      // Transform the data to match our ESP32Device interface
-      return data.map((device: any) => ({
-        id: device._id,
-        name: device.name,
-        device_identifier: device.device_identifier,
-        locker_id: device.locker_id,
-        status: device.status || 'offline',
-        key: device.key,
-        isDeleted: device.isDeleted || false,
-        last_online: device.last_online || new Date().toISOString(),
-        location: device.location,
-        ip_address: device.ip_address,
-        port: device.port
-      }));
-    } catch (error) {
-      console.error('Error fetching devices:', error);
-      // Return empty array as fallback for missing endpoint
-      if (error instanceof Error && error.message.includes('API endpoint not found')) {
-        console.warn('ESP32 devices endpoint not available, returning empty array');
-        return [];
-      }
-      throw error;
-    }
-  },
-
-  async getAllDevices(): Promise<ESP32Device[]> {
-    return this.getDevices();
-  },
-
-  async getDevice(deviceId: string): Promise<ESP32Device> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/esp32-devices/${deviceId}`);
-      return handleResponse(response);
-    } catch (error) {
-      console.error('Error fetching device:', error);
-      throw error;
-    }
-  },
-
-  async createDevice(deviceData: Partial<ESP32Device>): Promise<string> {
-    try {
-      console.log('Creating device in backend first:', deviceData);
-      
-      const response = await fetch(`${API_BASE_URL}/esp32-devices`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(deviceData),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      
-      // Sync to Firebase AFTER successful backend operation
-      await syncSpecificDataToFirebase('devices');
-      
-      console.log('Device created in backend and synced to Firebase');
-      return result.id || result;
-    } catch (error) {
-      console.error('Error creating device:', error);
-      throw error;
-    }
-  },
-
-  async updateDevice(deviceId: string, updates: Partial<ESP32Device>): Promise<ESP32Device> {
-    try {
-      console.log('Updating device in backend first:', deviceId, updates);
-      
-      const response = await fetch(`${API_BASE_URL}/esp32-devices/${deviceId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updates),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      
-      // Sync to Firebase AFTER successful backend operation
-      await syncSpecificDataToFirebase('devices');
-      
-      console.log('Device updated in backend and synced to Firebase');
-      return result;
-    } catch (error) {
-      console.error('Error updating device:', error);
-      throw error;
-    }
-  },
-
-  async updateDeviceStatusByLockerId(lockerId: string, status: 'online' | 'offline'): Promise<void> {
-    try {
-      console.log(`Updating device status for locker ${lockerId} to ${status}`);
-      
-      // Get all devices first
-      const devices = await this.getDevices();
-      
-      // Find device with matching locker_id
-      const device = devices.find(d => d.locker_id === lockerId);
-      
-      if (!device) {
-        console.warn(`No device found for locker ID: ${lockerId}`);
-        return;
-      }
-      
-      // Update the device status
-      await this.updateDevice(device.id!, { 
-        status: status,
-        last_online: new Date().toISOString()
-      });
-      
-      console.log(`Device status updated successfully for locker ${lockerId}`);
-    } catch (error) {
-      console.error(`Error updating device status for locker ${lockerId}:`, error);
-      throw error;
-    }
-  },
-
-  async deleteDevice(deviceId: string): Promise<void> {
-    try {
-      console.log('Deleting device from backend first:', deviceId);
-      
-      const response = await fetch(`${API_BASE_URL}/esp32-devices/${deviceId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      // Sync to Firebase AFTER successful backend deletion
-      await syncSpecificDataToFirebase('devices');
-      
-      console.log('Device deleted from backend and removed from Firebase');
-    } catch (error) {
-      console.error('Error deleting device:', error);
-      throw error;
-    }
-  },
-
-  // Package-related methods
-  async getPackages(): Promise<Package[]> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/packages`);
-      const data = await handleResponse(response);
-      
-      // Transform the data to match our Package interface
-      return data.map((pkg: any) => ({
-        id: pkg._id,
-        name: pkg.name,
-        description: pkg.description,
-        imageUrl: pkg.imageUrl || pkg.image_url || '',
-        price: pkg.price,
-        type: pkg.type,
-        box_category_id: pkg.box_category_id?.toString() || '',
-        key: pkg.key || Date.now(),
-        isDeleted: pkg.isDeleted || false,
-        basePrice: pkg.basePrice || pkg.price,
-        duration: pkg.duration || 24,
-        createdAt: pkg.created_at || pkg.createdAt || new Date().toISOString(),
-        updatedAt: pkg.updated_at || pkg.updatedAt || new Date().toISOString()
-      }));
-    } catch (error) {
-      console.error('Error fetching packages:', error);
-      // Return empty array as fallback for missing endpoint
-      if (error instanceof Error && error.message.includes('API endpoint not found')) {
-        console.warn('Packages endpoint not available, returning empty array');
-        return [];
-      }
-      throw error;
-    }
-  },
-
-  async getAllPackages(): Promise<Package[]> {
-    return this.getPackages();
-  },
-
-  async createPackage(packageData: Partial<Package>): Promise<string> {
-    try {
-      console.log('Creating package in backend first:', packageData);
-      
-      const response = await fetch(`${API_BASE_URL}/packages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(packageData),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      
-      // No sync service for packages yet, but prepared for future
-      console.log('Package created in backend');
-      return result.id || result;
-    } catch (error) {
-      console.error('Error creating package:', error);
-      throw error;
-    }
-  },
-
-  async updatePackage(packageId: string, updates: Partial<Package>): Promise<Package> {
-    try {
-      console.log('Updating package in backend first:', packageId, updates);
-      
-      const response = await fetch(`${API_BASE_URL}/packages/${packageId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updates),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      
-      console.log('Package updated in backend');
-      return result;
-    } catch (error) {
-      console.error('Error updating package:', error);
-      throw error;
-    }
-  },
-
-  async deletePackage(packageId: string): Promise<void> {
-    try {
-      console.log('Deleting package from backend first:', packageId);
-      
-      const response = await fetch(`${API_BASE_URL}/packages/${packageId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      console.log('Package deleted from backend');
-    } catch (error) {
-      console.error('Error deleting package:', error);
-      throw error;
-    }
-  },
-
-  // Payment-related methods (updated to use payments endpoint)
+  // Payment methods with full CRUD support
   async getPayments(): Promise<Payment[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/payments`);
+      console.log('Fetching payments from backend...');
+      const response = await fetchWithTimeout(`${API_BASE_URL}/payments`);
       const data = await handleResponse(response);
       
       // Transform the data to match our Payment interface
@@ -1387,12 +1202,7 @@ export const databaseService = {
       }));
     } catch (error) {
       console.error('Error fetching payments:', error);
-      // Return empty array as fallback for missing endpoint
-      if (error instanceof Error && error.message.includes('API endpoint not found')) {
-        console.warn('Payments endpoint not available, returning empty array');
-        return [];
-      }
-      throw error;
+      throw new Error(`Gagal mengambil data pembayaran: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   },
 
@@ -1400,157 +1210,114 @@ export const databaseService = {
     return this.getPayments();
   },
 
-  async deletePayment(paymentId: string): Promise<void> {
+  // NEW: Create payment method
+  async createPayment(paymentData: PaymentInput): Promise<string> {
     try {
-      console.log('Deleting payment from backend first:', paymentId);
-      
-      const response = await fetch(`${API_BASE_URL}/payments/${paymentId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      // Validate required fields
+      if (!paymentData.bookingId?.trim()) {
+        throw new Error('Booking ID wajib diisi');
       }
-      
-      // Sync to Firebase AFTER successful backend deletion
-      await syncSpecificDataToFirebase('payments');
-      
-      console.log('Payment deleted from backend and removed from Firebase');
-      
-      // Also delete from Firebase Realtime Database
-      try {
-        const paymentRef = ref(realtimeDb, `payments/${paymentId}`);
-        await remove(paymentRef);
-      } catch (firebaseError) {
-        console.warn('Failed to sync to Firebase:', firebaseError);
+      if (!paymentData.amount || paymentData.amount <= 0) {
+        throw new Error('Jumlah pembayaran wajib diisi dan harus lebih dari 0');
       }
-    } catch (error) {
-      console.error('Error deleting payment:', error);
-      throw error;
-    }
-  },
-
-  async updatePayment(paymentId: string, updates: Partial<Payment>): Promise<Payment> {
-    try {
-      console.log('Updating payment in backend first:', paymentId, updates);
-      
-      const response = await fetch(`${API_BASE_URL}/payments/${paymentId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updates),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (!paymentData.paymentMethod?.trim()) {
+        throw new Error('Metode pembayaran wajib diisi');
       }
 
-      const result = await response.json();
-      
-      // Sync to Firebase AFTER successful backend operation
-      await syncSpecificDataToFirebase('payments');
-
-      console.log('Payment updated in backend and synced to Firebase');
-
-      // Also update in Firebase Realtime Database
-      try {
-        const paymentRef = ref(realtimeDb, `payments/${paymentId}`);
-        await update(paymentRef, updates);
-      } catch (firebaseError) {
-        console.warn('Failed to sync to Firebase:', firebaseError);
-      }
-
-      return result;
-    } catch (error) {
-      console.error('Error updating payment:', error);
-      throw error;
-    }
-  },
-
-  async deleteAllPayments(): Promise<void> {
-    try {
-      console.warn('Deleting ALL payments from backend first - BE CAREFUL!');
-      
-      const response = await fetch(`${API_BASE_URL}/payments`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      // Sync to Firebase AFTER successful backend deletion
-      await syncSpecificDataToFirebase('payments');
-      
-      console.log('All payments deleted from backend and removed from Firebase');
-      
-      // Also delete all payments from Firebase Realtime Database
-      try {
-        const paymentsRef = ref(realtimeDb, 'payments');
-        await remove(paymentsRef);
-      } catch (firebaseError) {
-        console.warn('Failed to sync to Firebase:', firebaseError);
-      }
-    } catch (error) {
-      console.error('Error deleting all payments:', error);
-      throw error;
-    }
-  },
-
-  async createPayment(userId: string, bookingId: string, paymentData: Partial<Payment>): Promise<Payment> {
-    try {
       console.log('Creating payment in backend first:', paymentData);
       
-      const response = await fetch(`${API_BASE_URL}/payments`, {
+      const paymentDataForBackend = {
+        bookingId: paymentData.bookingId,
+        amount: paymentData.amount,
+        paymentMethod: paymentData.paymentMethod,
+        payment_method: paymentData.paymentMethod,
+        status: paymentData.status || 'pending',
+        duitku_payment_id: paymentData.duitku_payment_id,
+        order_id: paymentData.order_id || generateUniqueId('pay'),
+        transaction_time: new Date().toISOString(),
+        key: paymentData.key || Date.now(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      
+      const response = await fetchWithTimeout(`${API_BASE_URL}/payments`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...paymentData,
-          bookingId: bookingId,
-          createdAt: new Date().toISOString(),
-        }),
+        body: JSON.stringify(paymentDataForBackend),
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
+      const result = await handleResponse(response);
       
       // Sync to Firebase AFTER successful backend operation
       await syncSpecificDataToFirebase('payments');
       
       console.log('Payment created in backend and synced to Firebase');
-      
-      // Also save to Firebase Realtime Database as backup
-      try {
-        const paymentRef = ref(realtimeDb, `payments/${result.id}`);
-        await set(paymentRef, {
-          id: result.id,
-          userId: userId,
-          bookingId: bookingId,
-          ...paymentData,
-          createdAt: result.createdAt || new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        });
-      } catch (firebaseError) {
-        console.warn('Failed to sync to Firebase:', firebaseError);
-      }
-
-      return result;
+      return result.id || result._id || result;
     } catch (error) {
       console.error('Error creating payment:', error);
-      throw error;
+      throw new Error(`Gagal membuat pembayaran: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   },
 
-  // Locker Log methods (updated to use locker-logs endpoint)
+  async updatePayment(paymentId: string, updates: Partial<Payment>): Promise<Payment> {
+    try {
+      if (!paymentId || paymentId === 'undefined' || paymentId === 'null') {
+        throw new Error('Payment ID tidak valid untuk update');
+      }
+
+      console.log('Updating payment in backend first:', paymentId, updates);
+      
+      const updateData = {
+        ...updates,
+        updatedAt: new Date().toISOString()
+      };
+      
+      const response = await fetchWithTimeout(`${API_BASE_URL}/payments/${paymentId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updateData),
+      });
+
+      const result = await handleResponse(response);
+      
+      // Sync to Firebase AFTER successful backend operation
+      await syncSpecificDataToFirebase('payments');
+      
+      console.log('Payment updated in backend and synced to Firebase');
+      return result;
+    } catch (error) {
+      console.error('Error updating payment:', error);
+      throw new Error(`Gagal mengupdate pembayaran: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  },
+
+  async deletePayment(paymentId: string): Promise<void> {
+    try {
+      if (!paymentId || paymentId === 'undefined' || paymentId === 'null') {
+        throw new Error('Payment ID tidak valid untuk penghapusan');
+      }
+
+      console.log('Deleting payment from backend first:', paymentId);
+      
+      const response = await fetchWithTimeout(`${API_BASE_URL}/payments/${paymentId}`, {
+        method: 'DELETE',
+      });
+
+      await handleResponse(response);
+      
+      // Sync to Firebase AFTER successful backend deletion
+      await syncSpecificDataToFirebase('payments');
+      
+      console.log('Payment deleted from backend and removed from Firebase');
+    } catch (error) {
+      console.error('Error deleting payment:', error);
+      throw new Error(`Gagal menghapus pembayaran: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  },
+
+  // Locker Log methods with full CRUD support
   async getLockerLogs(): Promise<LockerLog[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/locker-logs`);
+      console.log('Fetching locker logs from backend...');
+      const response = await fetchWithTimeout(`${API_BASE_URL}/locker-logs`);
       const data = await handleResponse(response);
       
       // Transform the data to match our LockerLog interface
@@ -1565,12 +1332,7 @@ export const databaseService = {
       }));
     } catch (error) {
       console.error('Error fetching locker logs:', error);
-      // Return empty array as fallback for missing endpoint
-      if (error instanceof Error && error.message.includes('API endpoint not found')) {
-        console.warn('Locker logs endpoint not available, returning empty array');
-        return [];
-      }
-      throw error;
+      throw new Error(`Gagal mengambil data locker logs: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   },
 
@@ -1578,17 +1340,107 @@ export const databaseService = {
     return this.getLockerLogs();
   },
 
+  // NEW: Create locker log method
+  async createLockerLog(logData: LockerLogInput): Promise<string> {
+    try {
+      // Validate required fields
+      if (!logData.locker_id?.trim()) {
+        throw new Error('Locker ID wajib diisi');
+      }
+      if (!logData.action?.trim()) {
+        throw new Error('Action wajib diisi');
+      }
+
+      console.log('Creating locker log in backend first:', logData);
+      
+      const logDataForBackend = {
+        locker_id: logData.locker_id,
+        esp32_device_id: logData.esp32_device_id || '',
+        action: logData.action,
+        action_time: logData.action_time || new Date().toISOString(),
+        key: logData.key || Date.now(),
+        userId: logData.userId
+      };
+      
+      const response = await fetchWithTimeout(`${API_BASE_URL}/locker-logs`, {
+        method: 'POST',
+        body: JSON.stringify(logDataForBackend),
+      });
+
+      const result = await handleResponse(response);
+      
+      // Sync to Firebase AFTER successful backend operation
+      await syncSpecificDataToFirebase('locker-logs');
+      
+      console.log('Locker log created in backend and synced to Firebase');
+      return result.id || result._id || result;
+    } catch (error) {
+      console.error('Error creating locker log:', error);
+      throw new Error(`Gagal membuat locker log: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  },
+
+  // NEW: Update locker log method
+  async updateLockerLog(logId: string, updates: Partial<LockerLog>): Promise<LockerLog> {
+    try {
+      if (!logId || logId === 'undefined' || logId === 'null') {
+        throw new Error('Locker Log ID tidak valid untuk update');
+      }
+
+      console.log('Updating locker log in backend first:', logId, updates);
+      
+      const response = await fetchWithTimeout(`${API_BASE_URL}/locker-logs/${logId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+      });
+
+      const result = await handleResponse(response);
+      
+      // Sync to Firebase AFTER successful backend operation
+      await syncSpecificDataToFirebase('locker-logs');
+      
+      console.log('Locker log updated in backend and synced to Firebase');
+      return result;
+    } catch (error) {
+      console.error('Error updating locker log:', error);
+      throw new Error(`Gagal mengupdate locker log: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  },
+
+  // NEW: Delete locker log method
+  async deleteLockerLog(logId: string): Promise<void> {
+    try {
+      if (!logId || logId === 'undefined' || logId === 'null') {
+        throw new Error('Locker Log ID tidak valid untuk penghapusan');
+      }
+
+      console.log('Deleting locker log from backend first:', logId);
+      
+      const response = await fetchWithTimeout(`${API_BASE_URL}/locker-logs/${logId}`, {
+        method: 'DELETE',
+      });
+
+      await handleResponse(response);
+      
+      // Sync to Firebase AFTER successful backend deletion
+      await syncSpecificDataToFirebase('locker-logs');
+      
+      console.log('Locker log deleted from backend and removed from Firebase');
+    } catch (error) {
+      console.error('Error deleting locker log:', error);
+      throw new Error(`Gagal menghapus locker log: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  },
+
   async deleteAllLockerLogs(): Promise<void> {
     try {
       console.warn('Deleting ALL locker logs from backend first - BE CAREFUL!');
       
-      const response = await fetch(`${API_BASE_URL}/locker-logs`, {
+      const response = await fetchWithTimeout(`${API_BASE_URL}/locker-logs`, {
         method: 'DELETE',
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      await handleResponse(response);
       
       console.log('All locker logs deleted from backend');
       
@@ -1601,6 +1453,82 @@ export const databaseService = {
       }
     } catch (error) {
       console.error('Error deleting all locker logs:', error);
+      throw new Error(`Gagal menghapus semua locker logs: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  },
+
+  // Box Category methods (keeping existing implementation)
+  async getBoxCategories(): Promise<BoxCategory[]> {
+    try {
+      const response = await fetchWithTimeout(`${API_BASE_URL}/box-categories`);
+      const data = await handleResponse(response);
+      
+      // Transform the data to match our BoxCategory interface
+      return data.map((category: any) => ({
+        id: category._id,
+        name: category.name,
+        type: category.type,
+        width: parseInt(category.width) || 0,
+        height: parseInt(category.height) || 0,
+        createdAt: category.created_at || category.createdAt || new Date().toISOString(),
+        updatedAt: category.updated_at || category.updatedAt || new Date().toISOString()
+      }));
+    } catch (error) {
+      console.error('Error fetching box categories:', error);
+      throw error;
+    }
+  },
+
+  async getBoxCategory(categoryId: string): Promise<BoxCategory> {
+    try {
+      const response = await fetchWithTimeout(`${API_BASE_URL}/box-categories/${categoryId}`);
+      return handleResponse(response);
+    } catch (error) {
+      console.error('Error fetching box category:', error);
+      throw error;
+    }
+  },
+
+  async createBoxCategory(categoryData: BoxCategory): Promise<BoxCategory> {
+    try {
+      console.log('Creating box category in backend first:', categoryData);
+      
+      const response = await fetchWithTimeout(`${API_BASE_URL}/box-categories`, {
+        method: 'POST',
+        body: JSON.stringify(categoryData),
+      });
+
+      const result = await handleResponse(response);
+      
+      // Sync to Firebase AFTER successful backend operation
+      await syncSpecificDataToFirebase('categories');
+
+      console.log('Box category created in backend and synced to Firebase');
+      return result;
+    } catch (error) {
+      console.error('Error creating box category:', error);
+      throw error;
+    }
+  },
+
+  async updateBoxCategory(categoryId: string, updates: Partial<BoxCategory>): Promise<BoxCategory> {
+    try {
+      console.log('Updating box category in backend first:', categoryId, updates);
+      
+      const response = await fetchWithTimeout(`${API_BASE_URL}/box-categories/${categoryId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+      });
+
+      const result = await handleResponse(response);
+      
+      // Sync to Firebase AFTER successful backend operation
+      await syncSpecificDataToFirebase('categories');
+
+      console.log('Box category updated in backend and synced to Firebase');
+      return result;
+    } catch (error) {
+      console.error('Error updating box category:', error);
       throw error;
     }
   },
@@ -1614,20 +1542,12 @@ export const databaseService = {
       console.error('Error initializing default data:', error);
       throw error;
     }
-  },
-
-  // Initialize auto-sync when service starts - use less frequent sync since backend is now primary
-  async initializeAutoSync(): Promise<void> {
-    try {
-      console.log('Initializing auto-sync with Firebase (backend-first approach)...');
-      await firebaseSyncService.startAutoSync(10); // Sync every 10 minutes instead of 5
-    } catch (error) {
-      console.error('Failed to initialize auto-sync:', error);
-    }
-  },
+  }
 };
 
-// Start auto-sync when the service is imported
-databaseService.initializeAutoSync().catch(error => {
-  console.warn('Auto-sync initialization failed:', error);
-});
+// Export the LockerAvailabilityManager for external use
+export { LockerAvailabilityManager };
+
+// Export main service as both named and default for compatibility
+export const databaseService = enhancedDatabaseService;
+export default enhancedDatabaseService;
