@@ -4,6 +4,8 @@ import { getStorage } from "firebase/storage";
 import { getDatabase, ref, set, update, get, remove } from "firebase/database";
 import { firebaseConfig } from './firebaseConfig';
 import { firebaseSyncService } from './firebaseSyncService';
+import esp32DeviceService from './esp32DeviceService';
+import lockerLogService from './lockerLogService';
 
 // Initialize Firebase (if not already initialized)
 const app = initializeApp(firebaseConfig);
