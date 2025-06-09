@@ -1,0 +1,442 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    --primary: 212 100% 50%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  }
+}
+
+/* Enhanced responsive animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 15px rgba(59, 130, 246, 0.4); }
+  50% { box-shadow: 0 0 25px rgba(59, 130, 246, 0.7); }
+}
+
+@keyframes slide-in-bottom {
+  from { 
+    transform: translateY(20px); 
+    opacity: 0; 
+  }
+  to { 
+    transform: translateY(0); 
+    opacity: 1; 
+  }
+}
+
+@keyframes slide-in-top {
+  from { 
+    transform: translateY(-20px); 
+    opacity: 0; 
+  }
+  to { 
+    transform: translateY(0); 
+    opacity: 1; 
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scale-in {
+  from { 
+    transform: scale(0.95); 
+    opacity: 0; 
+  }
+  to { 
+    transform: scale(1); 
+    opacity: 1; 
+  }
+}
+
+.float-animation {
+  animation: float 4s ease-in-out infinite;
+}
+
+.pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.slide-in-bottom {
+  animation: slide-in-bottom 0.4s ease-out;
+}
+
+.slide-in-top {
+  animation: slide-in-top 0.4s ease-out;
+}
+
+.fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.scale-in {
+  animation: scale-in 0.3s ease-out;
+}
+
+/* Enhanced responsive grid system */
+.responsive-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .responsive-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .responsive-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 1280px) {
+  .responsive-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.locker-grid {
+  @apply responsive-grid;
+}
+
+.gradient-bg {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.card-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+}
+
+/* Enhanced mobile-specific optimizations */
+@media (max-width: 767px) {
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .table-responsive table {
+    min-width: 500px;
+  }
+  
+  .mobile-card {
+    margin-bottom: 0.75rem;
+    padding: 1rem;
+  }
+  
+  .mobile-stack {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .mobile-text-sm {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+  
+  .mobile-p-2 {
+    padding: 0.75rem;
+  }
+
+  .mobile-full-width {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .mobile-compact {
+    padding: 0.5rem;
+    margin: 0.25rem;
+  }
+}
+
+/* Responsive container utilities */
+.container-responsive {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+  .container-responsive {
+    max-width: 640px;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .container-responsive {
+    max-width: 768px;
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container-responsive {
+    max-width: 1024px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .container-responsive {
+    max-width: 1280px;
+  }
+}
+
+/* Enhanced responsive table utilities */
+.responsive-table {
+  @apply overflow-x-auto border rounded-lg;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+}
+
+.responsive-table::-webkit-scrollbar {
+  height: 6px;
+}
+
+.responsive-table::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.responsive-table::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.5);
+  border-radius: 3px;
+}
+
+.responsive-table table {
+  @apply min-w-full divide-y divide-border;
+}
+
+@media (max-width: 640px) {
+  .responsive-table table {
+    @apply min-w-max text-sm;
+  }
+  
+  .responsive-table th,
+  .responsive-table td {
+    @apply px-3 py-2;
+  }
+}
+
+/* Mobile-first responsive utilities */
+.mobile-hidden {
+  @apply hidden sm:block;
+}
+
+.mobile-only {
+  @apply block sm:hidden;
+}
+
+.mobile-grid {
+  @apply grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 lg:gap-6;
+}
+
+.mobile-flex {
+  @apply flex flex-col gap-3 sm:flex-row sm:gap-4;
+}
+
+.mobile-text {
+  @apply text-sm leading-5 sm:text-base sm:leading-6;
+}
+
+.mobile-p {
+  @apply p-3 sm:p-4 md:p-6;
+}
+
+.mobile-gap {
+  @apply gap-3 sm:gap-4 md:gap-6;
+}
+
+.mobile-rounded {
+  @apply rounded-lg sm:rounded-xl;
+}
+
+.mobile-shadow {
+  @apply shadow-sm sm:shadow-md;
+}
+
+/* Form responsive utilities */
+.form-responsive {
+  @apply space-y-4 sm:space-y-6;
+}
+
+.form-responsive .form-group {
+  @apply space-y-2;
+}
+
+.form-responsive input,
+.form-responsive textarea,
+.form-responsive select {
+  @apply w-full px-3 py-2 sm:px-4 sm:py-3 text-sm sm:text-base;
+}
+
+.form-responsive label {
+  @apply block text-sm font-medium sm:text-base;
+}
+
+/* Button responsive utilities */
+.btn-responsive {
+  @apply px-3 py-2 text-sm sm:px-4 sm:py-3 sm:text-base transition-all duration-200;
+}
+
+.btn-responsive-full {
+  @apply w-full sm:w-auto;
+}
+
+/* Card responsive utilities */
+.card-responsive {
+  @apply rounded-lg p-4 sm:rounded-xl sm:p-6 shadow-sm sm:shadow-md transition-all duration-200;
+}
+
+.card-responsive:hover {
+  @apply shadow-md sm:shadow-lg transform sm:scale-105;
+}
+
+/* Navigation responsive utilities */
+.nav-responsive {
+  @apply flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4;
+}
+
+.nav-item-responsive {
+  @apply w-full sm:w-auto text-left sm:text-center;
+}
+
+/* Modal responsive utilities */
+.modal-responsive {
+  @apply w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl;
+}
+
+.modal-content-responsive {
+  @apply p-4 sm:p-6 md:p-8;
+}
+
+/* Layout spacing utilities */
+.section-spacing {
+  @apply py-8 sm:py-12 md:py-16;
+}
+
+.content-spacing {
+  @apply space-y-6 sm:space-y-8 md:space-y-12;
+}
+
+/* Typography responsive utilities */
+.heading-responsive {
+  @apply text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold;
+}
+
+.subheading-responsive {
+  @apply text-lg sm:text-xl md:text-2xl font-semibold;
+}
+
+.text-responsive {
+  @apply text-sm sm:text-base md:text-lg;
+}
+
+.text-muted-responsive {
+  @apply text-xs sm:text-sm text-muted-foreground;
+}
