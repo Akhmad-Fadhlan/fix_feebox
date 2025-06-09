@@ -73,6 +73,14 @@ export function LockerLogsManager({ logs, setLogs, onDataChange }: LockerLogsMan
         return <AlertTriangle className="w-4 h-4 text-red-600" />;
       case 'sensor_trigger':
         return <Activity className="w-4 h-4 text-orange-600" />;
+      case 'booking_created':
+        return <Activity className="w-4 h-4 text-purple-600" />;
+      case 'booking_cancelled':
+        return <Activity className="w-4 h-4 text-yellow-600" />;
+      case 'item_retrieved':
+        return <Unlock className="w-4 h-4 text-emerald-600" />;
+      case 'maintenance':
+        return <AlertTriangle className="w-4 h-4 text-gray-600" />;
       default:
         return <FileText className="w-4 h-4 text-gray-600" />;
     }
@@ -83,9 +91,27 @@ export function LockerLogsManager({ logs, setLogs, onDataChange }: LockerLogsMan
       open: 'bg-green-100 text-green-800',
       close: 'bg-blue-100 text-blue-800',
       error: 'bg-red-100 text-red-800',
-      sensor_trigger: 'bg-orange-100 text-orange-800'
+      sensor_trigger: 'bg-orange-100 text-orange-800',
+      booking_created: 'bg-purple-100 text-purple-800',
+      booking_cancelled: 'bg-yellow-100 text-yellow-800',
+      item_retrieved: 'bg-emerald-100 text-emerald-800',
+      maintenance: 'bg-gray-100 text-gray-800'
     };
     return colors[action as keyof typeof colors] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getActionLabel = (action: string) => {
+    const labels = {
+      open: 'Buka',
+      close: 'Tutup',
+      error: 'Error',
+      sensor_trigger: 'Sensor Triggered',
+      booking_created: 'Booking Dibuat',
+      booking_cancelled: 'Booking Dibatalkan',
+      item_retrieved: 'Barang Diambil',
+      maintenance: 'Maintenance'
+    };
+    return labels[action as keyof typeof labels] || action;
   };
 
   return (
@@ -148,7 +174,7 @@ export function LockerLogsManager({ logs, setLogs, onDataChange }: LockerLogsMan
                         <div className="flex items-center gap-2">
                           {getActionIcon(log.action)}
                           <Badge className={getActionColor(log.action)}>
-                            {log.action}
+                            {getActionLabel(log.action)}
                           </Badge>
                         </div>
                       </TableCell>

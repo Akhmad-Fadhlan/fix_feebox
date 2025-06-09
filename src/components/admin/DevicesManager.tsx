@@ -130,6 +130,14 @@ export function DevicesManager({ devices, setDevices, onDataChange }: DevicesMan
       <WifiOff className="w-4 h-4 text-red-600" />;
   };
 
+  const getStatusLabel = (status: string) => {
+    const labels = {
+      online: 'Online',
+      offline: 'Offline'
+    };
+    return labels[status as keyof typeof labels] || status;
+  };
+
   return (
     <div className="space-y-6">
       <Card className="border-0 shadow-sm">
@@ -250,7 +258,7 @@ export function DevicesManager({ devices, setDevices, onDataChange }: DevicesMan
                       <div className="flex items-center gap-2">
                         {getStatusIcon(device.status)}
                         <Badge className={device.status === 'online' ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
-                          {device.status}
+                          {getStatusLabel(device.status)}
                         </Badge>
                       </div>
                     </TableCell>

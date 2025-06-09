@@ -42,14 +42,33 @@ export const lockerRetrievalService = {
           console.log(`- Availability: ${currentAvailable} -> ${newAvailable}`);
           console.log(`- Status: ${locker.status} -> available`);
           
-          // Force update to available status
+          // Update status based on availability
+          const newStatus = newAvailable > 0 ? 'available' : 'occupied';
+          
           await databaseService.updateLocker(retrievalData.lockerId, {
             available: newAvailable,
-            status: 'available',
+            status: newStatus,
             updatedAt: new Date().toISOString()
           });
           
-          console.log('✅ Firebase locker updated: availability increased and status set to AVAILABLE');
+          console.log('✅ Firebase locker updated: availability increased and status updated');
+          
+          // Create locker log for item retrieval
+          try {
+            const logData = {
+              locker_id: retrievalData.lockerId,
+              esp32_device_id: locker.esp32_device_id || '',
+              action: 'item_retrieved',
+              action_time: new Date().toISOString(),
+              key: Date.now(),
+              userId: retrievalData.userId
+            };
+
+            await databaseService.createLockerLog(logData);
+            console.log('✅ Locker log created for item retrieval');
+          } catch (logError) {
+            console.warn('⚠️ Failed to create locker log:', logError);
+          }
           
           // Double check the update worked
           const updatedLocker = await databaseService.getLocker(retrievalData.lockerId);
