@@ -19,8 +19,8 @@ import { TransactionsManager } from '@/components/admin/TransactionsManager';
 import { LockersManager } from '@/components/admin/LockersManager';
 import { UsersManager } from '@/components/admin/UsersManager';
 import { PackagesManager } from '@/components/admin/PackagesManager';
-import { ESP32DevicesManager } from '@/components/admin/ESP32DevicesManager';
-import { LockerLogsManagerNew } from '@/components/admin/LockerLogsManagerNew';
+import { DevicesManager } from '@/components/admin/DevicesManager';
+import { LockerLogsManager } from '@/components/admin/LockerLogsManager';
 import { PaymentsManager } from '@/components/admin/PaymentsManager';
 
 type AdminView = 'dashboard' | 'users' | 'packages' | 'lockers' | 'transactions' | 'devices' | 'logs' | 'payments';
@@ -257,9 +257,9 @@ const Admin = () => {
       case 'transactions':
         return <TransactionsManager bookings={bookings} setBookings={setBookings} onDataChange={loadAllData} />;
       case 'devices':
-        return <ESP32DevicesManager onDataChange={loadAllData} />;
+        return <DevicesManager devices={devices} setDevices={setDevices} onDataChange={loadAllData} />;
       case 'logs':
-        return <LockerLogsManagerNew onDataChange={loadAllData} />;
+        return <LockerLogsManager logs={logs} setLogs={setLogs} onDataChange={loadAllData} />;
       case 'payments':
         return <PaymentsManager payments={payments} setPayments={setPayments} onDataChange={loadAllData} />;
       default:
