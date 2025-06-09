@@ -288,15 +288,6 @@ export function LockersManager({ lockers, setLockers, onDataChange }: LockersMan
     return colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-800';
   };
 
-  const getStatusLabel = (status: string) => {
-    const labels = {
-      available: 'Tersedia',
-      occupied: 'Terpesan',
-      maintenance: 'Maintenance'
-    };
-    return labels[status as keyof typeof labels] || status;
-  };
-
   return (
     <ResponsiveContainer>
       <div className="space-y-4 md:space-y-6">
@@ -424,7 +415,6 @@ export function LockersManager({ lockers, setLockers, onDataChange }: LockersMan
                           placeholder="Jumlah tersedia"
                           className="mobile-full-width"
                           min="0"
-                          max={newLocker.total || 1}
                         />
                       </div>
                       <div className="space-y-2">
@@ -534,16 +524,10 @@ export function LockersManager({ lockers, setLockers, onDataChange }: LockersMan
                         <TableCell className="text-xs md:text-sm">{locker.name}</TableCell>
                         <TableCell className="mobile-hidden text-xs md:text-sm">{locker.size}</TableCell>
                         <TableCell className="text-xs md:text-sm">{locker.total}</TableCell>
-                        <TableCell className="mobile-hidden text-xs md:text-sm">
-                          <div className="flex items-center gap-1">
-                            <span className={locker.available === 0 ? 'text-red-600 font-semibold' : 'text-green-600'}>{locker.available}</span>
-                            <span className="text-gray-400">/</span>
-                            <span className="text-gray-600">{locker.total}</span>
-                          </div>
-                        </TableCell>
+                        <TableCell className="mobile-hidden text-xs md:text-sm">{locker.available}</TableCell>
                         <TableCell>
                           <Badge className={`${getStatusColor(locker.status)} text-xs`}>
-                            {getStatusLabel(locker.status)}
+                            {locker.status}
                           </Badge>
                         </TableCell>
                         <TableCell className="mobile-hidden">
@@ -663,8 +647,6 @@ export function LockersManager({ lockers, setLockers, onDataChange }: LockersMan
                       value={editingLocker.available}
                       onChange={(e) => setEditingLocker({...editingLocker, available: Number(e.target.value)})}
                       className="mobile-full-width"
-                      min="0"
-                      max={editingLocker.total || 1}
                     />
                   </div>
                   <div className="space-y-2">
